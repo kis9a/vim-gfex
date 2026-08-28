@@ -9,7 +9,7 @@ set cpoptions&vim
 " expand('%:p:h') returns getcwd() for an unnamed buffer (V5), so no extra
 " fallback is needed here.
 function! gfex#resolve#base() abort
-  if get(g:, 'gfex_base', 'file') ==# 'cwd'
+  if gfex#core#opt('gfex_base', 'file', 'file') ==# 'cwd'
     return getcwd()
   endif
   return expand('%:p:h')

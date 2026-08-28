@@ -229,3 +229,26 @@ function! s:suite.glob_wildcards_are_never_a_candidate() abort
   call s:weak('gfex#path#candidate', ['~/*', '~/*.md', '$HOME/*.md', 'docs/?.md'])
   call s:weak('gfex#path#explicit_cfile', ['~/*.md'])
 endfunction
+
+" A ratio mixes the two numeric forms: neither the all-slash rule nor the
+" all-dot rule catches 2.30/5.0, and the "leading digit" rule is disabled as
+" soon as there is a slash.  tier3 used to open <dir>/2.30/5.0 for it.
+function! s:suite.P22_numeric_ratios_are_not_paths() abort
+  call s:weak('gfex#path#candidate',
+        \ ['2.30/5.0', '3.5/10.0', '2026.08/2026.09', '1/2', '2.0',
+        \  '2026/10/08', '10.1.3.1', '2026'])
+  call s:weak('gfex#path#explicit_cfile', ['2.30/5.0', '2026.08/2026.09'])
+  " A path that merely contains numbers is still a path.
+  call s:strong('gfex#path#candidate', ['docs/2026/notes.md', './2026.md'])
+endfunction
+
+" The five-character cap is a deliberate, measured limit (see :help gfex).
+function! s:suite.P23_extension_length_cap() abort
+  call s:strong('gfex#path#candidate', ['a.md', 'a.json', 'a.vimrc'])
+  call s:weak('gfex#path#candidate', ['README.markdown', 'a.properties'])
+  call s:weak('gfex#path#explicit_cfile', ['README.markdown'])
+  " The cap applies to explicit() too - only the path-shape sanity check
+  " stands between a markdown link and a create.  A slash lifts it.
+  call s:weak('gfex#path#explicit', ['README.markdown'])
+  call s:strong('gfex#path#explicit', ['./README.markdown'])
+endfunction

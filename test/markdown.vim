@@ -181,3 +181,44 @@ function! s:suite.F06_large_file_performance() abort
   call s:assert.true(l:r == 0 || l:r == 1)
   call s:assert.true(l:elapsed < 0.05, 'in_fence took ' . string(l:elapsed) . 's')
 endfunction
+
+function! s:suite.M17_badge_style_nested_link() abort
+  " [![img](i.png)](x.md): the outer link owns the whole span, so the image
+  " inside it must not win.
+  let l:line = '[![img](i.png)](x.md)'
+  call s:assert.equals(gfex#markdown#at(l:line, 1), 'x.md')
+  call s:assert.equals(gfex#markdown#at(l:line, 5), 'x.md')
+  call s:assert.equals(gfex#markdown#at(l:line, 17), 'x.md')
+  call s:assert.equals(gfex#markdown#all(l:line), ['x.md'])
+endfunction
+
+function! s:suite.M18_bracketed_link_text() abort
+  call s:assert.equals(gfex#markdown#at('[a [b] c](x.md)', 3), 'x.md')
+endfunction
+
+function! s:suite.M19_cursor_on_the_bang_of_an_image_link() abort
+  call s:assert.equals(gfex#markdown#at('![alt](./img.png)', 1), './img.png')
+endfunction
+
+function! s:suite.M20_cursor_on_the_last_byte_of_a_link() abort
+  let l:line = '[a](./x.md)'
+  call s:assert.equals(gfex#markdown#at(l:line, len(l:line)), './x.md')
+  call s:assert.equals(gfex#markdown#at(l:line, len(l:line) + 1), '')
+endfunction
+
+function! s:suite.F07_fence_inside_a_blockquote() abort
+  call s:fill(['prose', '> ```json', '>   "path": "src/main.vim",', '> ```', 'after'])
+  call s:assert.equals(gfex#markdown#in_fence(1), 0)
+  call s:assert.equals(gfex#markdown#in_fence(2), 1)
+  call s:assert.equals(gfex#markdown#in_fence(3), 1)
+  call s:assert.equals(gfex#markdown#in_fence(4), 1)
+  call s:assert.equals(gfex#markdown#in_fence(5), 0)
+endfunction
+
+function! s:suite.F08_closing_fence_carries_no_info_string() abort
+  " ```vim inside a ``` block neither opens nor closes (CommonMark).
+  call s:fill(['head', '```', 'a', '```vim', 'b', '```', 'tail'])
+  call s:assert.equals(gfex#markdown#in_fence(3), 1)
+  call s:assert.equals(gfex#markdown#in_fence(5), 1)
+  call s:assert.equals(gfex#markdown#in_fence(7), 0)
+endfunction

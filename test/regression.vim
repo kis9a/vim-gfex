@@ -203,8 +203,12 @@ function! s:suite.G10_existing_user_mapping_is_not_overwritten() abort
   call s:assert.match(maparg('gF', 'n'), '(gfex-line)')
   call s:assert.match(maparg('<C-w>gf', 'n'), '(gfex-tab)')
   call s:assert.not_match(b:undo_ftplugin, 'nunmap <buffer> <C-w>f')
-  silent! nunmap <buffer> <C-w>f
+
+  " unmap_buffer() must remove only what gfex owns.
   call gfex#unmap_buffer()
+  call s:assert.match(maparg('<C-w>f', 'n'), "echo 'mine'")
+  call s:assert.equals(maparg('gf', 'n'), '')
+  silent! nunmap <buffer> <C-w>f
 endfunction
 
 function! s:suite.G11_count_is_delegated_for_every_key() abort
@@ -350,4 +354,27 @@ function! s:suite.G18b_resolve_refuses_shell_and_glob_metacharacters() abort
   finally
     let $GFEX_G18_ROOT = ''
   endtry
+endfunction
+
+function! s:suite.G19_no_firing_inside_a_fence_in_a_blockquote() abort
+  " Quoting a code block is how a review or a design note shows one, and the
+  " fence marker then sits behind '> '.  Same decoy as G12.
+  call s:write('src/main.vim', ['decoy'])
+  call s:host(['prose', '> ```json', '>   "path": "src/main.vim",', '> ```', 'after'])
+  call cursor(3, 5)
+  call s:assert.equals(gfex#markdown#in_fence(3), 1)
+  call s:assert.equals(gfex#target().kind, 'no_opinion')
+  call s:gf()
+  call s:assert.equals(s:opened(), resolve(s:dir . '/host.md'))
+endfunction
+
+function! s:suite.G20_numeric_ratio_does_not_create_a_phantom_buffer() abort
+  " 2.30/5.0 passed candidate() and tier3 opened <dir>/2.30/5.0 for it.
+  for l:line in ['- おすすめ度: 2.30/5.0', '- 期間: 2026.08/2026.09']
+    call s:host([l:line])
+    call cursor(1, 1)
+    call s:assert.equals([l:line, gfex#target().kind], [l:line, 'no_opinion'])
+    call s:gf()
+    call s:assert.equals([l:line, s:opened()], [l:line, resolve(s:dir . '/host.md')])
+  endfor
 endfunction

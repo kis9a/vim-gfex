@@ -146,3 +146,64 @@ function! s:suite.G09_cfile_injection_is_stable() abort
   call s:assert_none(s:decide('資料', 1, '資料', 0))
   call s:assert_hit(s:decide('資料', 1, './調査/設計メモ.md', 0), 4, './調査/設計メモ.md')
 endfunction
+
+" The core ordering rule (V6e): a markdown link is examined before <cfile>,
+" because the link text is often a file name too.  Inverting tiers 1/2 and 4
+" used to break nothing in this suite.
+function! s:suite.C22_link_under_cursor_beats_cfile() abort
+  let l:d = s:decide('[profile.md](./docs/real.md)', 3, 'profile.md', 0)
+  call s:assert_hit(l:d, 1, './docs/real.md')
+endfunction
+
+function! s:suite.C23_sole_link_beats_cfile() abort
+  " Cursor is outside the link, on a path-shaped word; the link still wins.
+  let l:d = s:decide('see NOTES.md or [doc](./docs/real.md)', 5, 'NOTES.md', 0)
+  call s:assert_hit(l:d, 2, './docs/real.md')
+endfunction
+
+function! s:suite.C24_tier3_may_create_but_tier5_may_not() abort
+  call s:assert.equals(s:decide('資料: ./docs/new.md', 1, '資料', 0).create_ok, 1)
+  let s:existing = ['./docs/here.md']
+  call s:assert.equals(s:decide('see ./docs/here.md now', 1, 'see', 0).create_ok, 0)
+endfunction
+
+function! s:suite.C18b_bracketed_label_without_a_link() abort
+  " Without the bracket rule the label '[a' would be accepted and tier3
+  " would open docs/x.md from a line that is really a broken link.
+  call s:assert.not_equals(s:decide('[a: docs/x.md]', 1, '', 0).tier, 3)
+endfunction
+
+function! s:suite.C25_full_width_colon_needs_no_space() abort
+  call s:assert_hit(s:decide('資料：~/a.md', 1, '資料', 0), 3, '~/a.md')
+  call s:assert_hit(s:decide('資料： ~/a.md', 1, '資料', 0), 3, '~/a.md')
+  " An ASCII colon still requires one, which is what keeps http:// out.
+  call s:assert.not_equals(s:decide('a:b.md', 1, '', 0).tier, 3)
+endfunction
+
+function! s:suite.C26_scan_line_option_is_wired_through_options() abort
+  let g:gfex_scan_line = 0
+  try
+    call s:assert.equals(gfex#core#options().scan_line, 0)
+  finally
+    let g:gfex_scan_line = 1
+  endtry
+  call s:assert.equals(gfex#core#options().scan_line, 1)
+endfunction
+
+function! s:suite.C27_option_reader_ignores_non_string_values() abort
+  " Vim compares a Number to a String by converting the String, so 0 would
+  " equal every option value and invert the setting.
+  let g:gfex_test_opt = 0
+  try
+    " 0 reads as the off setting, which is what `let g:x = 0` means.
+    call s:assert.equals(gfex#core#opt('gfex_test_opt', 'syntax', 'never'), 'never')
+    let g:gfex_test_opt = 1
+    call s:assert.equals(gfex#core#opt('gfex_test_opt', 'syntax', 'never'), 'syntax')
+    let g:gfex_test_opt = ['x']
+    call s:assert.equals(gfex#core#opt('gfex_test_opt', 'error', 'error'), 'error')
+    let g:gfex_test_opt = 'edit'
+    call s:assert.equals(gfex#core#opt('gfex_test_opt', 'error', 'error'), 'edit')
+  finally
+    unlet! g:gfex_test_opt
+  endtry
+endfunction

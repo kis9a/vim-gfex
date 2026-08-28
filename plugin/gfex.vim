@@ -11,7 +11,13 @@ let g:loaded_gfex = 1
 let s:save_cpo = &cpoptions
 set cpoptions&vim
 
+" A bad value must not abort the rest of this file: 'cpoptions' would stay
+" clobbered and g:loaded_gfex is already set, so nothing would retry.
 if !exists('g:gfex_filetypes')
+  let g:gfex_filetypes = ['markdown']
+elseif type(g:gfex_filetypes) == type('')
+  let g:gfex_filetypes = [g:gfex_filetypes]
+elseif type(g:gfex_filetypes) != type([])
   let g:gfex_filetypes = ['markdown']
 endif
 if !exists('g:gfex_create')

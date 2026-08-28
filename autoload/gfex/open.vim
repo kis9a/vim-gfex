@@ -9,7 +9,6 @@ set cpoptions&vim
 
 " Only the two "cannot find a file" errors are ours.  E37 (no write since
 " last change) and E347 (no more file in path) must reach the user (V2-2/V4).
-let s:FIND_ERROR = '^Vim\%((\a\+)\)\=:E44[67]:'
 
 function! gfex#open#error(msg) abort
   echohl ErrorMsg
@@ -48,7 +47,7 @@ endfunction
 " Recognised URL.  Never falls back to the builtin: with the cursor on the
 " link text `normal! gf` would open a *local* file instead (M1).
 function! gfex#open#url(editcmd, url) abort
-  if get(g:, 'gfex_url', 'error') ==# 'edit'
+  if gfex#core#opt('gfex_url', 'error', 'error') ==# 'edit'
     if gfex#open#kind(a:editcmd) !=# 'edit'
       execute gfex#open#kind(a:editcmd)
     endif
@@ -56,10 +55,6 @@ function! gfex#open#url(editcmd, url) abort
     return
   endif
   call gfex#open#error(printf('gfex: URL target "%s" (see g:gfex_url)', a:url))
-endfunction
-
-function! gfex#open#is_find_error(exception) abort
-  return a:exception =~# s:FIND_ERROR
 endfunction
 
 let &cpoptions = s:save_cpo

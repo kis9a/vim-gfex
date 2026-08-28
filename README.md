@@ -77,7 +77,8 @@ does not do that, so ``see: `README.md` `` keeps working.
 
 For every filetype in `g:gfex_filetypes` (default `['markdown']`), gfex maps
 buffer-locally, checking each key individually and skipping any key you have
-already mapped:
+already mapped **buffer-locally** (a global mapping is shadowed, which is what
+a buffer-local mapping is for):
 
 | key | `<Plug>` |
 | --- | --- |
@@ -128,6 +129,13 @@ ftplugin to enable gfex for a filetype by hand.
 
 `g:no_plugin_maps` and `g:no_gfex_maps` disable all mappings.
 
+A string option set to the number `0` is read as that option's "off" setting
+(`'never'`, `'error'`, `'file'`) — Vim compares a string to a number by
+converting the string, so without this `let g:gfex_url = 0` would have
+compared equal to `'edit'` and quietly enabled the URL handler. Any other
+non-string value falls back to the default. `g:gfex_filetypes` is read once,
+when the plugin loads.
+
 > **`g:gfex_url = 'edit'` trusts every URL in every file of an enabled
 > filetype.** The scheme comes from the document and netrw shells out to the
 > matching transfer tool, so `scp://`, `ssh://`, `rcp://` and `dav://` reach an
@@ -145,20 +153,26 @@ opens a **new, unwritten buffer** when the file does not exist. Nothing
 reaches the disk until you `:write`. That is how you follow a link to a note
 you have not written yet — but it does misfire, and you should know where.
 
-Measured over 196 files / 85,295 non-blank lines of real notes:
+Measured with this implementation over 196 files / 86,741 non-blank lines of
+real notes, cursor at column 1 (so tier 4, which needs the cursor on the
+target, is not represented):
 
 ```
-tier 1/2 markdown link : EXIST 64 / MISSING  5  -> miss rate  7%
-tier 3 "label: target" : EXIST 80 / MISSING 37  -> miss rate 31%
-tier 5 line scan       : existence required     -> miss rate  0%
-lines gfex never touches                        ->           81%
+tier 1/2 markdown link : EXIST  61 / MISSING  6  -> miss rate  9%
+tier 3 "label: target" : EXIST  11 / MISSING 29  -> miss rate 72%
+tier 5 line scan       : existence required      -> miss rate  0%
+lines inside a code fence                        ->            18%
+lines gfex has no opinion about                  ->            79%
+                                      never touched, total     98%
 ```
 
-- **tier 3 is the noisy one, at 31%.** The cost is structural: ``see:
-  `README.md` `` has to keep working, so tier 3 cannot ignore inline code
-  spans — and that is where most of its misses come from: lines like
-  ``example: `config/agents/worker.md` `` that describe a path rather than
-  point at one.
+- **tier 3 is the noisy one: at 72% it misses more often than it hits.** The
+  cost is structural: ``see: `README.md` `` has to keep working, so tier 3
+  cannot ignore inline code spans — and that is where most of its misses come
+  from: lines like ``example: `config/agents/worker.md` `` that describe a
+  path rather than point at one. It fires rarely — 40 lines in 86,741 — so
+  the absolute cost is small, but if an unexpected empty buffer bothers you,
+  turn creation off.
 - A typo (`RAEDME.md`), or a configuration example written **outside** a code
   fence, will open an empty buffer.
 - Fenced code blocks (` ``` ` and `~~~`) are excluded entirely, because

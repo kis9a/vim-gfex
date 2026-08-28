@@ -119,12 +119,10 @@ function! s:excluded(s) abort
   if a:s =~# '^\$' && stridx(a:s, '/') < 0
     return 1
   endif
-  " all-numeric segments: 1/2, 7/8, 2026/10/08
-  if a:s =~# '^\d\+\%(/\d\+\)\+$'
-    return 1
-  endif
-  " all-numeric segments: 1.2.3, 2.0
-  if a:s =~# '^\d\+\%(\.\d\+\)\+$'
+  " Nothing but numbers and separators: 1/2, 2026/10/08, 2.0, 10.1.3.1 and
+  " the mixed forms 2.30/5.0 and 2026.08/2026.09.  Separate rules for '/'
+  " and '.' let anything mixing the two slip through.
+  if a:s =~# '^\d\+\%([./]\d\+\)*$'
     return 1
   endif
   " version-like leading token without a path separator: 3.x, v1.2.3

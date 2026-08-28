@@ -9,9 +9,15 @@ scriptencoding utf-8
 let s:save_cpo = &cpoptions
 set cpoptions&vim
 
-" [text](target) / [](target) / ![alt](target)
-let s:LINK = '!\=\[[^]]*\]([^)]*)'
-let s:FENCE = '^\s*\%(`\{3,}\|\~\{3,}\)'
+" [text](target) / [](target) / ![alt](target).  The text part may contain
+" one level of brackets, so a badge - [![img](i.png)](x.md) - is read as the
+" outer link rather than as the image inside it.
+let s:TEXT = '!\=\[\%([^][]\|\[[^][]*\]\)*\]'
+let s:LINK = s:TEXT . '([^)]*)'
+" A fence may be nested in a blockquote: the JSON in a quoted example is
+" still a code fence.
+let s:FENCE = '^\s*\%(>\s*\)*\%(`\{3,}\|\~\{3,}\)'
+let s:MARKER = '^\s*\%(>\s*\)*\zs\%(`\{3,}\|\~\{3,}\)'
 
 " Byte ranges [start, end] (0-based, inclusive) of inline code spans.
 function! gfex#markdown#code_spans(line) abort
@@ -62,7 +68,7 @@ function! gfex#markdown#links(line) abort
     if s:in_spans(l:m[1], l:spans) || s:in_spans(l:m[2] - 1, l:spans)
       continue
     endif
-    let l:raw = matchstr(l:m[0], '^!\=\[[^]]*\](\zs.*\ze)$')
+    let l:raw = matchstr(l:m[0], '^' . s:TEXT . '(\zs.*\ze)$')
     call add(l:out, {'start': l:m[1], 'end': l:m[2] - 1, 'target': s:accept(l:raw)})
   endwhile
   return l:out
@@ -118,10 +124,16 @@ function! gfex#markdown#in_fence(lnum) abort
 
   let l:open = ''
   for l:n in l:lnums
-    let l:marker = matchstr(getline(l:n), '^\s*\zs\%(`\{3,}\|\~\{3,}\)')
+    let l:line = getline(l:n)
+    let l:marker = matchstr(l:line, s:MARKER)
     if empty(l:open)
       let l:open = l:marker
-    elseif l:marker[0] ==# l:open[0] && len(l:marker) >= len(l:open)
+      continue
+    endif
+    " A closing fence carries no info string (CommonMark): ```vim inside a
+    " ``` block opens nothing and closes nothing.
+    if l:marker[0] ==# l:open[0] && len(l:marker) >= len(l:open)
+          \ && matchstr(l:line, s:MARKER . '\zs.*') =~# '^\s*$'
       let l:open = ''
     endif
   endfor

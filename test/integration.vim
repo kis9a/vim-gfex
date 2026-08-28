@@ -238,3 +238,131 @@ function! s:suite.I12_gF_jumps_to_the_line_number() abort
   call s:assert.equals(line('.'), 4)
   call s:assert.equals(getline('.'), 'L4')
 endfunction
+
+function! s:suite.I13_E446_is_caught_and_reformatted() abort
+  " No file name under the cursor at all: the other half of the E44[67]
+  " catch, which nothing else exercises.
+  call s:host(['   '])
+  call cursor(1, 1)
+  call s:assert.equals(gfex#target().kind, 'no_opinion')
+
+  let l:err = ''
+  let l:out = ''
+  redir => l:out
+  try
+    call gfex#open#builtin('gf', 0)
+  catch
+    let l:err = v:exception
+  endtry
+  redir END
+  call s:assert.equals(l:err, '')
+  call s:assert.match(l:out, 'E446:')
+  call s:assert.not_match(l:out, 'Vim(normal)')
+  call s:assert.equals(s:opened(), resolve(s:dir . '/host.md'))
+endfunction
+
+function! s:suite.I14_split_line_and_tab_line_plugs() abort
+  call s:write('t.md', ['L1', 'L2', 'L3', 'L4', 'L5'])
+  call s:host(['see t.md:4 here'])
+
+  call cursor(1, 5)
+  let l:wins = winnr('$')
+  call s:gf("\<Plug>(gfex-split-line)")
+  call s:assert.equals(winnr('$'), l:wins + 1)
+  call s:assert.equals([s:opened(), line('.')], [resolve(s:dir . '/t.md'), 4])
+  close
+
+  execute 'edit!' fnameescape(s:dir . '/host.md')
+  call cursor(1, 5)
+  let l:tabs = tabpagenr('$')
+  call s:gf("\<Plug>(gfex-tab-line)")
+  call s:assert.equals(tabpagenr('$'), l:tabs + 1)
+  call s:assert.equals([s:opened(), line('.')], [resolve(s:dir . '/t.md'), 4])
+  tabclose
+endfunction
+
+function! s:suite.I15_target_leaves_path_empty_for_a_url() abort
+  call s:host(['参考: https://example.com/a.md'])
+  call cursor(1, 1)
+  let l:d = gfex#target()
+  call s:assert.equals([l:d.kind, l:d.target], ['recognized', 'https://example.com/a.md'])
+  call s:assert.equals([l:d.path, l:d.found], ['', 0])
+endfunction
+
+function! s:suite.I16_url_edit_opt_in_opens_the_url_itself() abort
+  " A scheme netrw does not handle, so this never reaches the network even
+  " if a netrw-carrying runtime is ever used here.
+  call s:assert.equals(exists(':Explore'), 0)
+  let g:gfex_url = 'edit'
+  try
+    call s:host(['[x](gfextest://example/a.md)'])
+    call cursor(1, 2)
+    call s:gf("\<Plug>(gfex-edit)")
+    call s:assert.equals(bufname('%'), 'gfextest://example/a.md')
+    silent! bwipeout!
+  finally
+    let g:gfex_url = 'error'
+  endtry
+endfunction
+
+function! s:suite.I17_base_option_cwd() abort
+  call s:write('sub/target.md', ['x'])
+  call mkdir(s:dir . '/other', 'p')
+  execute 'edit!' fnameescape(s:dir . '/other/host.md')
+  execute 'lcd' fnameescape(s:dir . '/sub')
+  let g:gfex_base = 'cwd'
+  try
+    call s:assert.equals(gfex#resolve#base(), getcwd())
+    let l:r = gfex#resolve#abs('target.md', gfex#resolve#base())
+    call s:assert.equals([resolve(l:r.path), l:r.found],
+          \ [resolve(s:dir . '/sub/target.md'), 1])
+  finally
+    let g:gfex_base = 'file'
+  endtry
+  call s:assert.equals(gfex#resolve#base(), expand('%:p:h'))
+endfunction
+
+function! s:suite.I18_numeric_option_values_do_not_invert_the_setting() abort
+  " let g:gfex_create = 0 reads as "off" to a Vim user; it must never mean
+  " "on".  Same for g:gfex_url = 0, which would enable the URL handler.
+  call s:write('local.md', ['decoy'])
+  let g:gfex_create = 0
+  try
+    call s:host(['資料: ./docs/NEW.md'])
+    call cursor(1, 1)
+    call s:gf("\<Plug>(gfex-edit)")
+    call s:assert.equals(s:opened(), resolve(s:dir . '/host.md'))
+  finally
+    let g:gfex_create = 'syntax'
+  endtry
+
+  let g:gfex_url = 0
+  try
+    call s:host(['[local.md](gfextest://example/local.md)'])
+    call cursor(1, 3)
+    call s:gf("\<Plug>(gfex-edit)")
+    call s:assert.equals(s:opened(), resolve(s:dir . '/host.md'))
+  finally
+    let g:gfex_url = 'error'
+  endtry
+endfunction
+
+function! s:suite.I19_bad_filetypes_value_does_not_abort_the_plugin() abort
+  let l:cpo = &cpoptions
+  let g:gfex_filetypes = 'markdown'
+  unlet! g:loaded_gfex
+  try
+    execute 'source' fnameescape(s:root . '/plugin/gfex.vim')
+    call s:assert.equals(g:gfex_filetypes, ['markdown'])
+    call s:assert.equals(&cpoptions, l:cpo)
+    call s:assert.equals(maparg('<Plug>(gfex-tab-line)', 'n') !=# '', 1)
+
+    let g:gfex_filetypes = 42
+    unlet! g:loaded_gfex
+    execute 'source' fnameescape(s:root . '/plugin/gfex.vim')
+    call s:assert.equals(g:gfex_filetypes, ['markdown'])
+    call s:assert.equals(&cpoptions, l:cpo)
+  finally
+    let g:gfex_filetypes = ['markdown']
+  endtry
+endfunction

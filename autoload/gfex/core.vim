@@ -17,9 +17,26 @@ scriptencoding utf-8
 let s:save_cpo = &cpoptions
 set cpoptions&vim
 
+" Read a string-valued option defensively.  Vim converts a String to a
+" Number when comparing the two, so `0 ==# 'syntax'` is true and a numeric
+" value would silently inverts every setting.  A Number 0 is read as the
+" {off} setting, because that is what a Vim user writing `let g:x = 0`
+" means; anything else that is not a String falls back to {default}.
+function! gfex#core#opt(name, default, off) abort
+  let l:v = get(g:, a:name, a:default)
+  if type(l:v) == type('')
+    return l:v
+  endif
+  if type(l:v) == type(0)
+    return l:v == 0 ? a:off : a:default
+  endif
+  return a:default
+endfunction
+
 function! gfex#core#options() abort
+  let l:scan = get(g:, 'gfex_scan_line', 1)
   return {
-        \ 'scan_line': get(g:, 'gfex_scan_line', 1),
+        \ 'scan_line': type(l:scan) == type(0) ? (l:scan != 0) : 1,
         \ 'exists': 'gfex#resolve#target_exists',
         \ }
 endfunction
@@ -36,8 +53,11 @@ endfunction
 
 " R3-a: everything after the first ': ' is ONE token.  A label containing
 " [ ] ( ) is a markdown link fragment, not a label.
+" An ASCII colon must be followed by a space (that is what keeps http:// and
+" a:b out).  A full-width colon cannot occur in a URL, and Japanese does not
+" put a space after it, so there it is optional.
 function! s:label_target(line) abort
-  let l:m = matchlist(a:line, '^\([^:：]\{-}\)[:：]\s\+\(.\{-}\)\s*$')
+  let l:m = matchlist(a:line, '^\([^:：]\{-}\)\%(:\s\+\|：\s*\)\(.\{-}\)\s*$')
   if empty(l:m) || l:m[1] =~# '[][()]'
     return ''
   endif

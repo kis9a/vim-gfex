@@ -82,7 +82,7 @@ function! gfex#find(editcmd) abort
     return gfex#open#edit(a:editcmd, l:d.path, l:lnum)
   endif
 
-  if l:d.create_ok && get(g:, 'gfex_create', 'syntax') ==# 'syntax'
+  if l:d.create_ok && gfex#core#opt('gfex_create', 'syntax', 'never') ==# 'syntax'
         \ && !empty(l:d.path)
     return gfex#open#edit(a:editcmd, l:d.path, l:lnum)
   endif
