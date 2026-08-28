@@ -1,0 +1,281 @@
+*gfex.txt*	gf that understands the line it is on
+
+==============================================================================
+CONTENTS						      *gfex-contents*
+
+1. Introduction ............................ |gfex-intro|
+2. Requirements ............................ |gfex-requirements|
+3. How it decides .......................... |gfex-tiers|
+4. Mappings ................................ |gfex-mappings|
+5. Functions ............................... |gfex-functions|
+6. Options ................................. |gfex-options|
+7. Creating files .......................... |gfex-create|
+8. Non goals ............................... |gfex-non-goals|
+9. Architecture ............................ |gfex-architecture|
+
+==============================================================================
+1. INTRODUCTION							  *gfex-intro*
+
+gfex makes |gf| work on the kind of line people actually write in notes,
+indexes and TODO files, where a path sits somewhere in a sentence rather than
+under the cursor: >
+
+	2    a    ~/dev/foo/README.md
+	資料: ~/dev/foo/README.md
+	| [docs/](./docs/) | 一式（[概要](./docs/overview.md)） |
+<
+The builtin |gf| only looks at the file name under *or after* the cursor on
+the current line, cut out according to 'isfname'.  On the first line above
+with the cursor at the start it takes "2"; one column later it takes "a" -
+and if a file called "a" happens to exist in 'path', it opens that instead of
+the README.  gfex reads the *syntax of the line* first and only then falls
+back to the builtin command.
+
+Two rules keep it safe:
+
+- gfex either has an opinion or it does not.  When it has none it delegates to
+  the builtin command; when it has one it never goes back to the builtin,
+  because re-searching from the cursor is exactly what opens the wrong file.
+- Guessing never creates a file.  The line-scanning layer only accepts paths
+  that already exist, and nothing fires inside a fenced code block.
+
+==============================================================================
+2. REQUIREMENTS						   *gfex-requirements*
+
+- Vim 8.0+ or Neovim 0.5+
+- No external commands, no other plugins.
+
+==============================================================================
+3. HOW IT DECIDES						  *gfex-tiers*
+
+For the cursor line, in order:
+
+	tier -1	inside a fenced code block (``` or ~~~)  -> no opinion
+	tier 0	a |count| was given                      -> builtin, unchanged
+	tier 1	the cursor is inside a markdown link     -> that link's target
+	tier 2	the line has exactly one markdown link   -> that target
+	tier 3	the line reads "<label>: <target>" and
+		<target> is path shaped                  -> that target
+	tier 4	'isfname' picks a path shaped |<cfile>|    -> that
+	tier 5	exactly one path on the line that
+		actually exists                          -> that
+	tier 6	anything else                            -> no opinion
+
+"No opinion" means the builtin |gf|, |gF|, |CTRL-W_f| or |CTRL-W_gf| runs
+unchanged, including 'path', 'suffixesadd' and 'includeexpr' handling.
+
+Details worth knowing:
+
+- Markdown links are examined before |<cfile>| on purpose.  In
+  `[README.md](./docs/README.md)` the link *text* also looks like a path, and
+  |<cfile>| would return the wrong one.
+- Links inside inline code spans (`` `[a](b.md)` ``) are ignored, so a
+  document that explains markdown syntax does not become a minefield.
+  tier 3 does not do this, so "参照: `README.md`" still works.
+- tier 3 takes everything after the first ": " as one token.  "related: a.md
+  b.md" therefore contains a space, is not a path, and falls through.
+- URLs are recognised but never opened as local files; see |g:gfex_url|.
+- A |count| is passed straight to the builtin command, so `2gf` still means
+  "the second match in 'path'".
+
+What gfex deliberately does not treat as a path:
+
+- A name whose extension is longer than five characters, or does not start
+  with a letter.  This is what keeps `v1.2.3`, `3.x` and `10.1.3.1` out, and
+  measuring the real corpora showed the limit costs nothing: relaxing it to
+  ten characters admitted 172 more tokens, all of them member access such as
+  `this.config` or `sys.objects`, and not one existing file.  Put the cursor
+  on such a name and the builtin |gf| still opens it.
+- Anything still containing `[`, `]`, `(` or `)` after the decoration has
+  been stripped.  These are leftovers of a markdown link the line scan cut in
+  half, not file names, so `foo(1).md` is not recognised either.
+- Anything containing a backtick or a glob wildcard (`*`, `?`, `{`).
+  |expand()| runs backticks through the shell, so a `~/...` or `$VAR/...`
+  target carrying one would execute a command from the document being read.
+  Such a target is refused before it reaches |expand()|, and never resolves.
+
+==============================================================================
+4. MAPPINGS							*gfex-mappings*
+
+gfex defines no global mapping.  For every filetype in |g:gfex_filetypes| it
+maps, buffer-locally:
+
+	gf		|<Plug>(gfex-edit)|
+	gF		|<Plug>(gfex-line)|
+	CTRL-W f	|<Plug>(gfex-split)|
+	CTRL-W gf	|<Plug>(gfex-tab)|
+
+Each key is checked individually: a key you have already mapped is left
+alone.  The mappings are undone by 'b:undo_ftplugin'.  |g:no_plugin_maps| and
+|g:no_gfex_maps| disable them entirely.
+
+Available |<Plug>| mappings:
+						       *<Plug>(gfex-edit)*
+						       *<Plug>(gfex-line)*
+						      *<Plug>(gfex-split)*
+						 *<Plug>(gfex-split-line)*
+						        *<Plug>(gfex-tab)*
+						   *<Plug>(gfex-tab-line)*
+>
+	<Plug>(gfex-edit)		gf
+	<Plug>(gfex-line)		gF        (honours "file:line")
+	<Plug>(gfex-split)		CTRL-W f
+	<Plug>(gfex-split-line)		CTRL-W F
+	<Plug>(gfex-tab)		CTRL-W gf
+	<Plug>(gfex-tab-line)		CTRL-W gF
+<
+Map them yourself with, for example: >
+
+	nmap <buffer> gf <Plug>(gfex-edit)
+<
+Normal mode only.  Visual mode |gf| already takes the selection literally,
+which covers the case gfex cannot (file names containing spaces).
+
+==============================================================================
+5. FUNCTIONS						       *gfex-functions*
+
+gfex#find({editcmd})					       *gfex#find()*
+	Run gfex for {editcmd}, which is one of "gf", "gF", "<C-w>f",
+	"<C-w>F", "<C-w>gf" or "<C-w>gF".  Reads |v:count|, so call it from a
+	mapping that starts with `:<C-U>` - the |<Plug>| mappings do.
+
+gfex#target()						     *gfex#target()*
+	Return what gfex would do, without doing it: >
+
+	    {'kind':      'no_opinion' | 'recognized',
+	     'tier':      -1 .. 6,
+	     'target':    'the raw target',
+	     'path':      '/absolute/path' (empty for URLs),
+	     'found':     0 | 1,
+	     'create_ok': 0 | 1,
+	     'reason':    'why'}
+<
+	Use it to build your own behaviour on top of gfex.
+
+gfex#map_buffer()					 *gfex#map_buffer()*
+gfex#unmap_buffer()				       *gfex#unmap_buffer()*
+	Add or remove the buffer-local mappings.  Call map_buffer() from your
+	own ftplugin to enable gfex for a filetype by hand.
+
+==============================================================================
+6. OPTIONS							 *gfex-options*
+
+						       *g:gfex_filetypes*
+g:gfex_filetypes	(default: ['markdown'])
+	Filetypes that get the buffer-local mappings.  Set it to [] to define
+	no mapping at all and use the |<Plug>| mappings yourself.
+
+	Only a *buffer-local* mapping counts as one you already own, so a
+	global `gf` in your vimrc is shadowed rather than treated as taken.
+
+	markdown is mapped from `after/ftplugin/markdown.vim`, which is
+	guaranteed to run after the runtime ftplugin.  Any other filetype is
+	mapped from a |FileType| autocommand instead, whose ordering against
+	that filetype's ftplugin is not guaranteed; if the ftplugin *assigns*
+	'b:undo_ftplugin' the mapping may be dropped.
+
+							  *g:gfex_create*
+g:gfex_create		(default: 'syntax')
+	'syntax'  tiers 1-4 may open a new (unwritten) buffer for a target
+		  that does not exist yet.
+	'never'   never open a new buffer.  A recognised but missing target
+		  reports `E447: Can't find file "..." in path` and stops;
+		  it does *not* fall back to the builtin command.
+
+	tier 5 never creates anything under either value.
+
+							     *g:gfex_url*
+g:gfex_url		(default: 'error')
+	'error'   report the URL and stop.
+	'edit'    run `:edit <url>`.  With netrw loaded this performs a real
+		  network fetch, so it is opt-in.
+
+	Setting 'edit' means trusting every URL in every file of an enabled
+	filetype: the scheme comes from the document, and netrw shells out to
+	the matching transfer tool, so scp://, ssh://, rcp:// and dav:// reach
+	an address the document chose, possibly with a credential prompt.
+	Turn it on only for documents you would run commands from.
+
+	gfex recognises URLs that the builtin |gf| would never have reached
+	(the cursor is usually on the label, not the URL), so making this
+	automatic would add network access that plain Vim does not do.
+
+							    *g:gfex_base*
+g:gfex_base		(default: 'file')
+	Base directory for relative targets.
+	'file'    `expand('%:p:h')` - the directory of the current file.
+	'cwd'     `getcwd()`.
+
+	A relative target that is not found under the base is looked up with
+	|findfile()|, which honours 'path' and 'suffixesadd', so a file the
+	builtin |gf| would have found is never hidden by a new empty buffer.
+
+						       *g:gfex_scan_line*
+g:gfex_scan_line	(default: 1)
+	Enable tier 5 (scan the line for one existing path).  Set to 0 to
+	restrict gfex to syntax it can recognise.
+
+							 *g:no_gfex_maps*
+g:no_gfex_maps
+g:no_plugin_maps
+	If either exists, gfex defines no buffer-local mapping.
+
+==============================================================================
+7. CREATING FILES						 *gfex-create*
+
+With the default `g:gfex_create = 'syntax'`, a target recognised by tiers 1-4
+opens a new buffer when the file does not exist.  Nothing is written to disk
+until you `:write`.  This is deliberate - it is how you follow a link to a
+note you have not written yet - but it does misfire.
+
+Measured over 196 files / 85,295 non-blank lines of real notes:
+>
+	tier 1/2 markdown link : 64 exist /  5 missing -> 7%
+	tier 3 "label: target" : 80 exist / 37 missing -> 31%
+	tier 5 line scan       : existence required    -> 0%
+	lines gfex never touches                       -> 81%
+<
+tier 3 is the noisy one.  Its 31% is structural: "see: `README.md`" must keep
+working, so tier 3 cannot ignore inline code spans, and that is where most of
+its misses come from (lines like "example: `config/agents/worker.md`" that
+describe a path rather than point at one).  A typo (`RAEDME.md`), or a
+configuration example written outside a code fence, will open an empty
+buffer.
+
+Fenced code blocks (``` and ~~~) are excluded entirely, because `"key":
+"value"` in JSON or YAML is exactly the tier 3 syntax.
+
+If you would rather never see a new buffer: >
+
+	let g:gfex_create = 'never'
+<
+==============================================================================
+8. NON GOALS							*gfex-non-goals*
+
+- Windows paths (C:\foo\bar.txt)
+- A full markdown parser (escaped parentheses in a target, and so on)
+- Guessing extension-less names (Makefile, LICENSE, Dockerfile) from a line;
+  put the cursor on them and tier 4 or the builtin will do it
+- Scoring several candidates to pick "the most likely one"
+- Visual mode (the builtin already takes the selection literally)
+- A handler registration framework; use |gfex#target()| instead
+- Creating files from the line-scanning layer
+- Opening URLs in a browser
+
+==============================================================================
+9. ARCHITECTURE						  *gfex-architecture*
+>
+	plugin/gfex.vim              options, <Plug>, FileType autocommand
+	after/ftplugin/markdown.vim  ordering-safe mapping for markdown
+	autoload/gfex.vim            public API
+	autoload/gfex/core.vim       tier decision      (pure)
+	autoload/gfex/path.vim       path vocabulary    (pure)
+	autoload/gfex/markdown.vim   markdown scanning  (pure + fence)
+	autoload/gfex/resolve.vim    target -> absolute path
+	autoload/gfex/open.vim       :edit / :split / builtin / errors
+<
+`core#decide()` takes the line, the column, |<cfile>| and the fence flag as
+arguments, so it never touches a buffer, the filesystem or 'path'.  That is
+what keeps most of the test suite free of fixtures.
+
+vim:tw=78:ts=8:ft=help:norl:
