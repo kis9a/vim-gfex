@@ -10,7 +10,8 @@ scriptencoding utf-8
 "    1. markdown link under cursor   -> its target        [explicit]
 "    2. exactly one markdown link    -> its target        [explicit]
 "    3. "<label>: <target>"          -> target            [candidate]
-"    4. <cfile> under the cursor     -> it                [explicit_cfile]
+"    4. URL under the cursor         -> it                [url exit]
+"       otherwise a path shaped <cfile>                   [explicit_cfile]
 "    5. exactly one existing path    -> it                [candidate]
 "    6. otherwise                    -> no_opinion
 
@@ -118,6 +119,13 @@ function! gfex#core#decide(line, col, cfile, fence, opts) abort
   endif
 
   " tier4 -- <cfile> under the cursor
+  " A URL has to be caught here, not left to the builtin: the builtin edits
+  " any name containing '://' without consulting 'path', so delegating opens
+  " a junk buffer named after the URL and g:gfex_url never gets a say (MT2).
+  let l:url = gfex#path#normalize(a:cfile)
+  if gfex#path#is_url(l:url)
+    return s:hit(4, l:url, 0, 'URL under the cursor')
+  endif
   let l:c = gfex#path#explicit_cfile(a:cfile)
   if !empty(l:c)
     return s:hit(4, l:c, 1, 'path under the cursor')

@@ -63,7 +63,8 @@ Requires Vim 8.0+ or Neovim 0.5+. No external commands, no other plugins.
 | 1 | the cursor is inside a markdown link | that link's target |
 | 2 | the line has exactly one markdown link | that target |
 | 3 | the line reads `<label>: <target>`, target is path shaped | that target |
-| 4 | `'isfname'` picks a path-shaped `<cfile>` | that |
+| 4 | the `<cfile>` under the cursor is a URL | see `g:gfex_url` |
+| 4 | otherwise `'isfname'` picks a path-shaped `<cfile>` | that |
 | 5 | exactly one path on the line that exists | that |
 | 6 | anything else | no opinion |
 
@@ -72,6 +73,11 @@ Requires Vim 8.0+ or Neovim 0.5+. No external commands, no other plugins.
 Links inside inline code spans (`` `[a](b.md)` ``) are ignored so that a
 document explaining markdown syntax is not a minefield. tier 3 deliberately
 does not do that, so ``see: `README.md` `` keeps working.
+
+A URL is recognised at every tier that can see one, never handed to the
+builtin: the builtin edits any name containing `://` without consulting
+`'path'`, which would open a buffer named after the URL and leave
+`g:gfex_url` with nothing to say.
 
 ### Mappings
 

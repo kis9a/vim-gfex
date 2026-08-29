@@ -89,6 +89,26 @@ function! s:suite.C11_url_after_label_is_not_a_local_file() abort
   call s:assert.equals(gfex#path#is_url(l:d.target), 1)
 endfunction
 
+function! s:suite.C11b_url_under_the_cursor_is_recognised_not_delegated() abort
+  " MT1 of the monkey run: left to the builtin, a bare URL under the cursor
+  " becomes a buffer named after it - g:gfex_url never gets a say.
+  let l:d = s:decide('https://example.com/README.md を参照', 1,
+        \ 'https://example.com/README.md', 0)
+  call s:assert_hit(l:d, 4, 'https://example.com/README.md')
+  call s:assert.equals([l:d.create_ok, gfex#path#is_url(l:d.target)], [0, 1])
+
+  " '//cdn/x.js' is a URL by the same rule, and gets the same exit.
+  call s:assert_hit(s:decide('see //cdn/x.js', 5, '//cdn/x.js', 0),
+        \ 4, '//cdn/x.js')
+endfunction
+
+function! s:suite.C11c_a_url_after_a_label_stops_at_the_first_blank() abort
+  " Everything after ': ' is one token, but a URL cannot contain a space:
+  " the prose behind it is not part of the target.
+  let l:d = s:decide('参考: https://example.com/a.md ほか2件', 1, '参考', 0)
+  call s:assert_hit(l:d, 3, 'https://example.com/a.md')
+endfunction
+
 function! s:suite.C12_blank_and_symbol_only_lines() abort
   call s:assert_none(s:decide('', 1, '', 0))
   call s:assert_none(s:decide('----', 1, '', 0))

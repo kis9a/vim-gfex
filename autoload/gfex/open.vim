@@ -40,7 +40,9 @@ endfunction
 function! gfex#open#edit(editcmd, path, lnum) abort
   execute gfex#open#kind(a:editcmd) . ' ' . fnameescape(a:path)
   if a:lnum > 0
-    execute a:lnum
+    " "x.md:9999" on a shorter file: the builtin gF stops at the last line,
+    " while a bare :9999 would raise E16 after the file is already open (MT4).
+    execute min([a:lnum, line('$')])
   endif
 endfunction
 

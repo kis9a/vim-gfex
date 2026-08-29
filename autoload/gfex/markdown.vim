@@ -16,8 +16,11 @@ let s:TEXT = '!\=\[\%([^][]\|\[[^][]*\]\)*\]'
 let s:LINK = s:TEXT . '([^)]*)'
 " A fence may be nested in a blockquote: the JSON in a quoted example is
 " still a code fence.
-let s:FENCE = '^\s*\%(>\s*\)*\%(`\{3,}\|\~\{3,}\)'
-let s:MARKER = '^\s*\%(>\s*\)*\zs\%(`\{3,}\|\~\{3,}\)'
+" The leading \m is load-bearing: search() honours 'magic' (the match() and
+" substitute() family does not), and under 'nomagic' the \~ here means "the
+" last substitute string" - E33 on every gf when there is none (MT1).
+let s:FENCE = '\m^\s*\%(>\s*\)*\%(`\{3,}\|\~\{3,}\)'
+let s:MARKER = '\m^\s*\%(>\s*\)*\zs\%(`\{3,}\|\~\{3,}\)'
 
 " Byte ranges [start, end] (0-based, inclusive) of inline code spans.
 function! gfex#markdown#code_spans(line) abort

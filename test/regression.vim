@@ -378,3 +378,90 @@ function! s:suite.G20_numeric_ratio_does_not_create_a_phantom_buffer() abort
     call s:assert.equals([l:line, s:opened()], [l:line, resolve(s:dir . '/host.md')])
   endfor
 endfunction
+
+function! s:suite.G21_nomagic_does_not_break_fence_detection() abort
+  " MT1: search() honours 'magic' where the match() family does not, and the
+  " fence pattern's \~ then means "the last substitute string" - E33 on every
+  " gf, with no previous :s in the session.
+  let l:magic = &magic
+  set nomagic
+  try
+    call s:write('src/main.vim', ['decoy'])
+    call s:host(['prose', '~~~json', '  "path": "src/main.vim",', '~~~', 'after'])
+    call cursor(3, 5)
+    call s:assert.equals(gfex#markdown#in_fence(3), 1)
+    call s:assert.equals(gfex#target().kind, 'no_opinion')
+    call cursor(5, 1)
+    call s:assert.equals(gfex#markdown#in_fence(5), 0)
+  finally
+    let &magic = l:magic
+  endtry
+endfunction
+
+function! s:suite.G22_a_bare_url_under_the_cursor_never_becomes_a_buffer() abort
+  " MT2: the builtin edits any name containing '://' without consulting
+  " 'path', so delegating here opened a buffer named after the URL.
+  call s:write('README.md', ['local decoy'])
+  call s:host(['https://example.com/README.md'])
+  call cursor(1, 12)
+  let l:d = gfex#target()
+  call s:assert.equals([l:d.kind, l:d.target],
+        \ ['recognized', 'https://example.com/README.md'])
+
+  let l:out = ''
+  redir => l:out
+  call s:gf()
+  redir END
+  call s:assert.match(l:out, 'g:gfex_url')
+  call s:assert.equals(s:opened(), resolve(s:dir . '/host.md'))
+  call s:assert.not_match(bufname('%'), 'https\?://')
+endfunction
+
+function! s:suite.G23_gF_past_the_end_of_the_file_stops_at_the_last_line() abort
+  " MT4: the builtin gF clamps to the last line; ":9999" only clamps too
+  " while Vim is in Normal mode.  Called from a script in Ex mode - a batch
+  " run, a headless CI job - the same range means :print and raises E16 after
+  " the file is already open.
+  " Neither this case nor G25 can go red on that error: a sourced function
+  " under "vim -e -s" does raise E16, but themis' runner reaches the test
+  " bodies in Normal mode, and there ":9999" clamps on its own.  Both tests
+  " therefore pin the contract; removing the min() is a mutation the suite
+  " cannot catch (verified by running the suite against a patched copy).
+  call s:write('target.md', ['L1', 'L2', 'L3'])
+  call s:host(['see target.md:9999 here'])
+  call cursor(1, 5)
+  let l:err = ''
+  let v:errmsg = ''
+  try
+    execute 'normal ' . "\<Plug>(gfex-line)"
+  catch
+    let l:err = v:exception
+  endtry
+  call s:assert.equals([l:err, v:errmsg], ['', ''])
+  call s:assert.equals(s:opened(), resolve(s:dir . '/target.md'))
+  call s:assert.equals(line('.'), 3)
+endfunction
+
+function! s:suite.G24_url_after_a_label_does_not_swallow_the_rest_of_the_line() abort
+  " MT3: with g:gfex_url = 'edit' the prose behind the URL would end up in
+  " the name of the buffer that gets opened.
+  call s:host(['参考: https://example.com/a.md ほか `touch pwned`'])
+  call cursor(1, 1)
+  call s:assert.equals(gfex#target().target, 'https://example.com/a.md')
+endfunction
+
+function! s:suite.G25_open_edit_clamps_a_line_number_past_the_end() abort
+  " MT4 at the layer itself: G23 only reaches gfex#open#edit() through the
+  " mapping, so this pins what the function promises on its own.  See G23 for
+  " why neither test can go red on the E16 that motivated the clamp.
+  let l:target = s:write('deep.md', ['L1', 'L2', 'L3'])
+  let l:err = ''
+  try
+    call gfex#open#edit('gF', l:target, 9999)
+  catch
+    let l:err = v:exception
+  endtry
+  call s:assert.equals(l:err, '')
+  call s:assert.equals(s:opened(), resolve(l:target))
+  call s:assert.equals([line('.'), line('$')], [3, 3])
+endfunction

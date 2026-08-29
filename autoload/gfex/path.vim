@@ -74,6 +74,13 @@ function! gfex#path#normalize(raw) abort
       break
     endif
   endwhile
+
+  " A URL cannot contain whitespace.  s:label_target() hands over everything
+  " after the label, so "url: https://x - see also" would otherwise report
+  " (and with g:gfex_url = 'edit' open) the prose as part of the URL (MT3).
+  if gfex#path#is_url(l:s)
+    let l:s = matchstr(l:s, '^\S\+')
+  endif
   return l:s
 endfunction
 

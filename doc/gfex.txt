@@ -56,7 +56,9 @@ For the cursor line, in order:
 	tier 2	the line has exactly one markdown link   -> that target
 	tier 3	the line reads "<label>: <target>" and
 		<target> is path shaped                  -> that target
-	tier 4	'isfname' picks a path shaped |<cfile>|    -> that
+	tier 4	the |<cfile>| under the cursor is a URL  -> see |g:gfex_url|
+		otherwise 'isfname' picks a path shaped
+		|<cfile>|                                -> that
 	tier 5	exactly one path on the line that
 		actually exists                          -> that
 	tier 6	anything else                            -> no opinion
@@ -73,7 +75,9 @@ Details worth knowing:
   document that explains markdown syntax does not become a minefield.
   tier 3 does not do this, so "参照: `README.md`" still works.
 - tier 3 takes everything after the first ": " as one token.  "related: a.md
-  b.md" therefore contains a space, is not a path, and falls through.
+  b.md" therefore contains a space, is not a path, and falls through.  A URL
+  is the exception: it cannot contain a blank, so it stops at the first one
+  and the prose behind it is not part of the target.
 - tier 2 outranks the cursor as well: on a line with exactly one link, that
   link is what the line is about, even if the cursor happens to sit on some
   other path-shaped word.  With two links and the cursor on neither, gfex
@@ -82,7 +86,11 @@ Details worth knowing:
   is how a review or a design note quotes a code block.  A closing fence
   carries no info string, so "```vim" inside a "```" block neither opens nor
   closes one.
-- URLs are recognised but never opened as local files; see |g:gfex_url|.
+- URLs are recognised but never opened as local files, whether they sit in a
+  markdown link, after a label, or plain under the cursor; see |g:gfex_url|.
+  A URL is never handed to the builtin: the builtin edits any name holding
+  "://" without consulting 'path', which just makes a buffer named after the
+  URL and leaves |g:gfex_url| with nothing to say.
 - A |count| is passed straight to the builtin command, so `2gf` still means
   "the second match in 'path'".
 

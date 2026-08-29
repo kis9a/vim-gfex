@@ -215,6 +215,18 @@ function! s:suite.normalize_keeps_the_fragment_of_a_url() abort
   call s:assert.equals(gfex#path#normalize('./README.md#usage'), './README.md')
 endfunction
 
+function! s:suite.normalize_cuts_a_url_at_the_first_blank() abort
+  call s:assert.equals(
+        \ gfex#path#normalize('https://example.com/a.md ほか2件'),
+        \ 'https://example.com/a.md')
+  call s:assert.equals(
+        \ gfex#path#normalize('http://x `touch pwned`'),
+        \ 'http://x')
+  " A local path with a space is untouched: only URLs are cut.
+  call s:assert.equals(
+        \ gfex#path#normalize('~/dev/my notes.md'), '~/dev/my notes.md')
+endfunction
+
 " A backtick reaching expand() is command execution, so it must never survive
 " as a path.  A fully wrapped `README.md` is different: normalize() strips the
 " pair, and what is left has no backtick at all (P18).
